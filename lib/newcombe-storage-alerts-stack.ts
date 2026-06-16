@@ -17,23 +17,21 @@ export class NewcombeStorageAlertsStack extends cdk.Stack {
 
     topic.addSubscription(new subscriptions.EmailSubscription('caseymwise@gmail.com'));
 
-    const backupUser = new iam.User(this, 'BackupUser', {
-      userName: 'newcombe-wisebackup',
-    });
+    const backupUser = iam.User.fromUserName(this, 'NewcombeUser', 'newcombe');
 
-    backupUser.addToPolicy(new iam.PolicyStatement({
-      actions: ['sns:Publish'],
-      resources: [topic.topicArn],
-    }));
-
-    // cloudwatch:PutMetricData does not support resource-level permissions
-    backupUser.addToPolicy(new iam.PolicyStatement({
-      actions: ['cloudwatch:PutMetricData'],
-      resources: ['*'],
-    }));
-
-    const accessKey = new iam.CfnAccessKey(this, 'BackupUserAccessKey', {
-      userName: backupUser.userName,
+    new iam.Policy(this, 'BackupPolicy', {
+      statements: [
+        new iam.PolicyStatement({
+          actions: ['sns:Publish'],
+          resources: [topic.topicArn],
+        }),
+        // cloudwatch:PutMetricData does not support resource-level permissions
+        new iam.PolicyStatement({
+          actions: ['cloudwatch:PutMetricData'],
+          resources: ['*'],
+        }),
+      ],
+      users: [backupUser],
     });
 
     // Alarm: BREACHING if no WiseBackup/BackupSuccess metric published in any of the last
@@ -63,14 +61,5 @@ export class NewcombeStorageAlertsStack extends cdk.Stack {
       value: topic.topicArn,
     });
 
-    new cdk.CfnOutput(this, 'AccessKeyId', {
-      description: 'newcombe-wisebackup IAM access key ID',
-      value: accessKey.ref,
-    });
-
-    new cdk.CfnOutput(this, 'SecretAccessKey', {
-      description: 'newcombe-wisebackup IAM secret access key — configure on Newcombe, do not commit',
-      value: accessKey.attrSecretAccessKey,
-    });
   }
 }

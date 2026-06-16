@@ -8,9 +8,7 @@ CDK stack (TypeScript) that provisions AWS alerting infrastructure for Newcombe'
 |----------|-------------|
 | SNS Topic | `newcombe-storage-alerts` |
 | Email subscription | `caseymwise@gmail.com` |
-| IAM User | `newcombe-wisebackup` |
-| IAM Policy | `sns:Publish` on topic; `cloudwatch:PutMetricData` |
-| IAM Access Key | Output via stack outputs (configure on Newcombe post-deploy) |
+| IAM Policy | `sns:Publish` on topic; `cloudwatch:PutMetricData` — attached to existing `newcombe` user |
 | CloudWatch Alarm | `newcombe-wisebackup-missing` — fires if no `WiseBackup/BackupSuccess` metric in 26 hours |
 
 ## Prerequisites
@@ -29,14 +27,9 @@ npx node_modules/.bin/cdk deploy
 
 ## After deploy
 
-1. Note the `AccessKeyId` and `SecretAccessKey` values from the stack outputs — **do not commit them**
-2. On Newcombe, configure the backup profile:
-   ```bash
-   aws configure --profile wisebackup
-   ```
-3. Confirm the SNS subscription email sent to `caseymwise@gmail.com`
-4. Re-enable cron on Newcombe (`crontab -e` → `0 0 * * * /home/casey/wisebackup.sh`)
-5. Run an end-to-end test:
+1. Confirm the SNS subscription email sent to `caseymwise@gmail.com`
+2. Re-enable cron on Newcombe (`crontab -e` → `0 0 * * * /home/casey/wisebackup.sh`)
+3. Run an end-to-end test:
    ```bash
    bash -x /home/casey/wisebackup.sh 2>&1 | tee /home/casey/wisebackup-test-$(date +%Y%m%d).log
    ```
