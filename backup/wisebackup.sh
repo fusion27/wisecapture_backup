@@ -90,8 +90,9 @@ run_rsync_with_metrics () {
 # Estimate changed bytes for S3 by "files newer than last run" (good proxy)
 estimate_changed_bytes_since () {
   local path="$1" last_epoch="$2"
-  # sum sizes of files modified after last_epoch
-  find "$path" -type f -newermt "@$last_epoch" -printf '%s\n' 2>/dev/null | awk '{s+=$1} END{print s+0}'
+  # find exits non-zero on unreadable dirs (e.g. lost+found); || true prevents ERR trap
+  { find "$path" -type f -newermt "@$last_epoch" -printf '%s\n' 2>/dev/null || true; } \
+    | awk '{s+=$1} END{print s+0}'
 }
 
 s3_sync_with_metrics () {
