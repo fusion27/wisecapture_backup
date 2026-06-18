@@ -96,21 +96,34 @@ estimate_changed_bytes_since () {
 
 s3_sync_with_metrics () {
   local label="$1" path="$2" bucket="$3"
-  local start end dur dims out="/tmp/s3sync_${label}_$$_out.txt"
+  local out="/tmp/s3sync_${label}_$$_out.txt"
+  local err="/tmp/s3sync_${label}_$$_err.txt"
   local stamp="$STATE_DIR/${label}.last_run"
   local last_epoch=0
 
   [[ -f "$stamp" ]] && last_epoch="$(cat "$stamp" || echo 0)"
 
-  # Count uploads by parsing aws output; measure duration
+  local start end dur dims s3_exit=0
   start=$(date +%s)
-  aws s3 sync "$path/" "$bucket" --force-glacier-transfer "${EXCLUDES_COMMON[@]}" | tee "$out" >/dev/null
+  aws s3 sync "$path/" "$bucket" --force-glacier-transfer "${EXCLUDES_COMMON[@]}" \
+    2>"$err" | tee "$out" >/dev/null || s3_exit=$?
   end=$(date +%s); dur=$((end-start))
 
-  local uploads
-  uploads="$(grep -c '^upload:' "$out" || true)"
+  # aws s3 sync exits non-zero when it encounters unreadable filesystem dirs (e.g., lost+found).
+  # Tolerate that specific case; re-raise if there are actual S3/auth errors in stderr.
+  if [[ $s3_exit -ne 0 ]]; then
+    local real_errors
+    real_errors=$(grep -v 'File/Directory is not readable\|Skipping file' "$err" | grep -c '.' || true)
+    if [[ $real_errors -gt 0 ]]; then
+      cat "$err" >&2
+      rm -f "$out" "$err"
+      exit $s3_exit
+    fi
+  fi
 
-  local est_bytes
+  local uploads est_bytes
+  # aws s3 sync uses \r for progress updates; normalize to \n before counting upload lines
+  uploads=$(tr '\r' '\n' < "$out" | grep -c '^upload:' || true)
   est_bytes="$(estimate_changed_bytes_since "$path" "$last_epoch")"
 
   dims="$(srcdst_dim "$label")"
@@ -119,7 +132,7 @@ s3_sync_with_metrics () {
   emit_cw "$AWS_NAMESPACE" "EstimatedUploadBytes" "$est_bytes" "Bytes" "$dims"
 
   date +%s > "$stamp"
-  rm -f "$out"
+  rm -f "$out" "$err"
   echo "$(ts) $label s3 sync done in ${dur}s, uploads=${uploads}, est_bytes=${est_bytes}" >> "$LOG"
 }
 
